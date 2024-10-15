@@ -1,21 +1,23 @@
 package org.example;
 
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Queue;
-import java.util.Set;
+import java.util.*;
 
-/** Statically computable properties of a grammar. */
+/**
+ * GrammarProperties: Calcula y almacena propiedades estáticas de una gramática.
+ * Esta clase analiza una gramática para determinar características como
+ * símbolos no alcanzables, no realizables, anulables y cíclicos.
+ */
 public class GrammarProperties {
     private final Grammar grammar;
-    private final Set<String> unreachable;
-    private final Set<String> unrealizable;
-    private final Set<String> nullable;
-    private final Set<String> cyclic;
+    private final Set<String> unreachable;  // Símbolos no alcanzables
+    private final Set<String> unrealizable; // Símbolos no realizables
+    private final Set<String> nullable;     // Símbolos anulables
+    private final Set<String> cyclic;       // Símbolos cíclicos
 
+    /**
+     * Constructor: Calcula todas las propiedades de la gramática.
+     * @param grammar La gramática a analizar
+     */
     public GrammarProperties(Grammar grammar) {
         this.grammar = grammar;
         this.unreachable = computeUnreachable();
@@ -24,44 +26,51 @@ public class GrammarProperties {
         this.cyclic = computeCyclic();
     }
 
-    /** Nonterminals that cannot be reached from the start symbol. */
+    // Métodos getter para cada propiedad calculada
+
+    /** @return Conjunto de no terminales no alcanzables desde el símbolo inicial */
     public Set<String> getUnreachable() {
         return unreachable;
     }
 
-    /** Nonterminals that do not generate any strings. */
+    /** @return Conjunto de no terminales que no generan ninguna cadena */
     public Set<String> getUnrealizable() {
         return unrealizable;
     }
 
-    /** Nonterminals that can generate the null string. */
+    /** @return Conjunto de no terminales que pueden generar la cadena vacía */
     public Set<String> getNullable() {
         return nullable;
     }
 
-    /** Nonterminals that can derive themselves. */
+    /** @return Conjunto de no terminales que pueden derivarse a sí mismos */
     public Set<String> getCyclic() {
         return cyclic;
     }
 
-    /** Some strings have infinitely many derivations.
-      This occurs if and only if a cyclic nonterminal is both reachable
-      and realizable.
+    /**
+     * Determina si la gramática es infinitamente ambigua.
+     * Esto ocurre si y solo si un no terminal cíclico es alcanzable y realizable.
+     * @return true si la gramática es infinitamente ambigua, false en caso contrario
      */
     public boolean infinitelyAmbiguous() {
         for (String nt : cyclic)
-            if (! unreachable.contains(nt) && ! unrealizable.contains(nt))
+            if (!unreachable.contains(nt) && !unrealizable.contains(nt))
                 return true;
         return false;
     }
 
-    private final Set<String> computeUnreachable() {
+    /**
+     * Calcula los no terminales no alcanzables desde el símbolo inicial.
+     * Utiliza un algoritmo de búsqueda en anchura (BFS).
+     */
+    private Set<String> computeUnreachable() {
         Set<String> reachable = new HashSet<>();
         Queue<String> queue = new ArrayDeque<>();
         queue.add(grammar.getStart());
-        while (! queue.isEmpty()) {
+        while (!queue.isEmpty()) {
             String nt = queue.remove();
-            if (! reachable.contains(nt)) {
+            if (!reachable.contains(nt)) {
                 reachable.add(nt);
                 for (ArrayList<String> rhs : grammar.expansions(nt))
                     for (String sym : rhs)
@@ -72,24 +81,17 @@ public class GrammarProperties {
         return complement(reachable);
     }
 
-    private final Set<String> computeUnrealizable() {
+    /**
+     * Calcula los no terminales no realizables (que no generan ninguna cadena).
+     * Utiliza un algoritmo iterativo que elimina no terminales realizables.
+     */
+    private Set<String> computeUnrealizable() {
         Set<String> unrealizable = new HashSet<>(grammar.nonTerminals());
         boolean changed = true;
         while (changed) {
             changed = false;
-            for (String nt : unrealizable) {
-                boolean realizable = false;
-                for (ArrayList<String> rhs : grammar.expansions(nt)) {
-                    realizable = true;
-                    for (String sym : rhs)
-                        if (unrealizable.contains(sym)) {
-                            realizable = false;
-                            break;
-                        }
-                    if (realizable)
-                        break;
-                }
-                if (realizable) {
+            for (String nt : new ArrayList<>(unrealizable)) {
+                if (isRealizable(nt, unrealizable)) {
                     unrealizable.remove(nt);
                     changed = true;
                     break;
@@ -99,83 +101,133 @@ public class GrammarProperties {
         return unrealizable;
     }
 
-    private final Set<String> computeNullable() {
+    /**
+     * Determina si un no terminal es realizable.
+     */
+    private boolean isRealizable(String nt, Set<String> unrealizable) {
+        for (ArrayList<String> rhs : grammar.expansions(nt)) {
+            boolean allRealizableInRhs = true;
+            for (String sym : rhs) {
+                if (unrealizable.contains(sym)) {
+                    allRealizableInRhs = false;
+                    break;
+                }
+            }
+            if (allRealizableInRhs) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Calcula los no terminales anulables (que pueden generar la cadena vacía).
+     * Utiliza un algoritmo iterativo que añade no terminales anulables.
+     */
+    private Set<String> computeNullable() {
         Set<String> nullable = new HashSet<>();
         boolean changed = true;
         while (changed) {
             changed = false;
-            for (String nt : grammar.nonTerminals())
-                if (! nullable.contains(nt)) {
-                    boolean empty = false;
-                    for (ArrayList<String> rhs : grammar.expansions(nt)) {
-                        empty = true;
-                        for (String sym : rhs)
-                            if (! nullable.contains(sym)) {
-                                empty = false;
-                                break;
-                            }
-                        if (empty)
-                            break;
-                    }
-                    if (empty) {
-                        nullable.add(nt);
-                        changed = true;
-                        break;
-                    }
+            for (String nt : grammar.nonTerminals()) {
+                if (!nullable.contains(nt) && isNullable(nt, nullable)) {
+                    nullable.add(nt);
+                    changed = true;
+                    break;
                 }
+            }
         }
         return nullable;
     }
 
-    private final Set<String> computeCyclic() {
+    /**
+     * Determina si un no terminal es anulable.
+     */
+    private boolean isNullable(String nt, Set<String> nullable) {
+        for (ArrayList<String> rhs : grammar.expansions(nt)) {
+            boolean allNullableInRhs = true;
+            for (String sym : rhs) {
+                if (!nullable.contains(sym)) {
+                    allNullableInRhs = false;
+                    break;
+                }
+            }
+            if (allNullableInRhs) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Calcula los no terminales cíclicos (que pueden derivarse a sí mismos).
+     * Utiliza un algoritmo de expansión trivial y cierre transitivo.
+     */
+    private Set<String> computeCyclic() {
+        Map<String, Set<String>> trivialExpansion = computeTrivialExpansions();
+        computeTransitiveClosure(trivialExpansion);
+        return findCyclicNonTerminals(trivialExpansion);
+    }
+
+    /**
+     * Calcula las expansiones triviales para cada no terminal.
+     */
+    private Map<String, Set<String>> computeTrivialExpansions() {
         Map<String, Set<String>> trivialExpansion = new HashMap<>();
         for (String nt : grammar.nonTerminals()) {
-            Set<String> s = new HashSet<String>();
+            Set<String> s = new HashSet<>();
             for (ArrayList<String> rhs : grammar.expansions(nt)) {
-                int nonNullCount = 0;
-                for (String sym : rhs)
-                    if (! nullable.contains(sym))
-                        nonNullCount++;
-                if (nonNullCount == 0)
+                int nonNullCount = (int) rhs.stream().filter(sym -> !nullable.contains(sym)).count();
+                if (nonNullCount == 0) {
                     s.addAll(rhs);
-                else if (nonNullCount == 1)
-                    for (String sym : rhs)
-                        if (grammar.expansions(sym) != null &&
-                            ! nullable.contains(sym))
-                            s.add(sym);
+                } else if (nonNullCount == 1) {
+                    rhs.stream()
+                       .filter(sym -> grammar.expansions(sym) != null && !nullable.contains(sym))
+                       .forEach(s::add);
+                }
             }
-            if (! s.isEmpty())
-                trivialExpansion.put(nt, s);
+            if (!s.isEmpty()) trivialExpansion.put(nt, s);
         }
+        return trivialExpansion;
+    }
 
-        // transitive closure
+    /**
+     * Calcula el cierre transitivo de las expansiones triviales.
+     */
+    private void computeTransitiveClosure(Map<String, Set<String>> trivialExpansion) {
         boolean changed = true;
         while (changed) {
             changed = false;
-            for (String nt : trivialExpansion.keySet()) {
-                Set<String> exp = trivialExpansion.get(nt);
-                ArrayList<String> expClone = new ArrayList<>(exp);
-                for (String target : expClone)
-                    if (trivialExpansion.containsKey(target))
+            for (Map.Entry<String, Set<String>> entry : trivialExpansion.entrySet()) {
+                Set<String> exp = entry.getValue();
+                int originalSize = exp.size();
+                for (String target : new ArrayList<>(exp)) {
+                    if (trivialExpansion.containsKey(target)) {
                         exp.addAll(trivialExpansion.get(target));
-                if (exp.size() > expClone.size())
+                    }
+                }
+                if (exp.size() > originalSize) {
                     changed = true;
+                }
             }
         }
+    }
 
+    /**
+     * Encuentra los no terminales cíclicos basados en las expansiones transitivas.
+     */
+    private Set<String> findCyclicNonTerminals(Map<String, Set<String>> trivialExpansion) {
         Set<String> cyclic = new HashSet<>();
-        for (String nt : trivialExpansion.keySet())
-            if (trivialExpansion.get(nt).contains(nt))
-                cyclic.add(nt);
+        for (Map.Entry<String, Set<String>> entry : trivialExpansion.entrySet()) {
+            if (entry.getValue().contains(entry.getKey())) {
+                cyclic.add(entry.getKey());
+            }
+        }
         return cyclic;
     }
 
-    private final Set<String> complement(Set<String> s) {
-        Set<String> rest = new HashSet<>();
-        for (String nt : grammar.nonTerminals())
-            if (! s.contains(nt))
-                rest.add(nt);
+    /**
+     * Calcula el complemento de un conjunto respecto a todos los no terminales de la gramática.
+     */
+    private Set<String> complement(Set<String> s) {
+        Set<String> rest = new HashSet<>(grammar.nonTerminals());
+        rest.removeAll(s);
         return rest;
     }
-
 }
