@@ -1,10 +1,8 @@
 package org.example;
 
-import java.io.BufferedWriter;
-import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Set;
 
 public class Main {
@@ -12,62 +10,16 @@ public class Main {
     private final static char EMPTY = '\u03b5';
 
     public static void main(String[] args) {
-        if (args.length < 2) {
-            System.err.println("usage: lhs rhs ... [sentence]");
-            System.exit(0);
-        }
+        // Iniciar la GUI
+        javax.swing.SwingUtilities.invokeLater(() -> new GrammarGUI().setVisible(true));
+    }
 
-        final String sentence =
-            args.length%2 == 1 ? args[args.length - 1] : null;
-
-        Grammar g = new Grammar();
-        for (int i = 1; i < args.length; i = i+2) {
-            String lhs = args[i-1];
-            for (String rhs : args[i].split("[|]", -1))
-                g.addProduction(lhs, symList(rhs));
-        }
+    public static String generateHTMLOutput(Grammar g, ArrayList<NonTerminalTree> trees, String sentence, boolean full) {
+        StringWriter stringWriter = new StringWriter();
+        PrintWriter out = new PrintWriter(stringWriter);
 
         GrammarProperties properties = new GrammarProperties(g);
 
-        String treeHeading;
-        ArrayList<NonTerminalTree> trees;
-        if (sentence != null) {
-            Earley parser = new Earley(g);
-            trees = new ArrayList<>();
-            boolean full = parser.parse(symList(sentence), trees);
-            if (! full)
-                treeHeading = "Some of the derivations";
-            else if (trees.isEmpty())
-                treeHeading = "There are no derivations";
-            else if (trees.size() == 1)
-                treeHeading = "Derivation tree";
-            else
-                treeHeading = "Derivation trees";
-            treeHeading = treeHeading + " for '" + sentence + "'";
-        } else {
-            int maxDepth = g.nonTerminals().size() + 9;
-            Expansion lgges = new Expansion(g, LIMIT);
-            boolean finite = false;
-	    int last_size = 0;
-            while (lgges.depth() < maxDepth) {
-                if (! lgges.expand())
-                    break;
-                int size = lgges.size();
-                if (size == last_size) {
-                    finite = true;
-                    break;
-                }
-                last_size = size;
-            }
-            trees = lgges.derivations(g.getStart());
-            if (finite)
-                treeHeading = "All derivation trees";
-            else
-                treeHeading = "Derivation trees of depth at most " + lgges.depth();
-        }
-        Collections.sort(trees, new NonTerminalTree.Ascending());
-
-        PrintWriter out = new PrintWriter(new BufferedWriter(new OutputStreamWriter(System.out)));
         out.println("<!DOCTYPE html>");
         out.println("<html>");
         out.println("<head>");
@@ -75,15 +27,16 @@ public class Main {
         out.println("<link rel=\"stylesheet\" type=\"text/css\" href=\"https://staff.city.ac.uk/~ross/IN1002/css/algorithms.css\"/>");
         out.println("<title>Derivation trees</title>");
         out.println("</head>");
+        out.println("<body>");
         out.println("<!-- Java version " + System.getProperty("java.version") + " -->");
         out.println("<h1>Derivation trees</h1>");
 
         out.println("<h2>Grammar</h2>");
         showGrammar(out, g);
 
-        if (! properties.getUnreachable().isEmpty() ||
-            ! properties.getUnrealizable().isEmpty() ||
-            ! properties.getCyclic().isEmpty()) {
+        if (!properties.getUnreachable().isEmpty() ||
+            !properties.getUnrealizable().isEmpty() ||
+            !properties.getCyclic().isEmpty()) {
             out.println("<p>This grammar has the following problems:");
             out.println("<ul>");
             report(out, properties.getUnreachable(), "unreachable from the start symbol " + g.getStart());
@@ -95,15 +48,28 @@ public class Main {
             out.println("</ul>");
         }
 
+        String treeHeading;
+        if (!full)
+            treeHeading = "Some of the derivations";
+        else if (trees.isEmpty())
+            treeHeading = "There are no derivations";
+        else if (trees.size() == 1)
+            treeHeading = "Derivation tree";
+        else
+            treeHeading = "Derivation trees";
+        treeHeading = treeHeading + " for '" + sentence + "'";
+
         out.println("<h2>" + treeHeading + "</h2>");
         for (NonTerminalTree t : trees)
             t.drawSVG(out);
 
+        out.println("</body>");
         out.println("</html>");
-	out.close();
+
+        return stringWriter.toString();
     }
 
-    private static ArrayList<String> symList(String s) {
+    static ArrayList<String> symList(String s) {
         ArrayList<String> exp = new ArrayList<>();
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
