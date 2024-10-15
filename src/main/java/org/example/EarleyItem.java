@@ -1,3 +1,5 @@
+package org.example;
+
 import java.util.ArrayList;
 
 // scanning right to left
